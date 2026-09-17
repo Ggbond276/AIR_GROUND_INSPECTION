@@ -37,6 +37,7 @@ inspection:
   kafka:
     topic:
       device-telemetry: device-telemetry
+      device-tasks: device-tasks
 
 logging:
   level:

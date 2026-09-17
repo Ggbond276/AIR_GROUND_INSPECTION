@@ -28,7 +28,14 @@
             <version>${kafka.version}</version>
         </dependency>
 
-        <!-- 日志接口 + 简单实现，控制台能看到 producer 日志 -->
+        <!-- JSON 解析（消费任务消息） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.16.1</version>
+        </dependency>
+
+        <!-- 日志接口 + 简单实现 -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

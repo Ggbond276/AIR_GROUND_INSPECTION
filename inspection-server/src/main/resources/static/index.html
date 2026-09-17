@@ -7,8 +7,6 @@
 
     <!-- Element Plus 样式 -->
     <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
-    <!-- Element Plus 图标 -->
-    <link rel="stylesheet" href="https://unpkg.com/@element-plus/icons-vue">
     <!-- Vue 3 -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <!-- Element Plus -->
@@ -101,15 +99,17 @@
         .stat-icon.amber  { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
         .stat-icon.purple { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
 
-        .stat-label {
-            font-size: 12px;
-            color: #64748b;
+        .stat-label { font-size: 12px; color: #64748b; }
+        .stat-value { font-size: 22px; font-weight: 600; color: #0f172a; line-height: 1.2; }
+
+        /* 主区域：左任务面板 + 右数据表 */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 16px;
         }
-        .stat-value {
-            font-size: 22px;
-            font-weight: 600;
-            color: #0f172a;
-            line-height: 1.2;
+        @media (max-width: 1100px) {
+            .main-grid { grid-template-columns: 1fr; }
         }
 
         .main-card {
@@ -117,6 +117,16 @@
             border-radius: 12px;
             padding: 20px 24px;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+        }
+
+        .card-title {
+            font-size: 15px;
+            color: #0f172a;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .table-toolbar {
@@ -185,10 +195,38 @@
             margin-left: 8px;
         }
 
-        /* 表格里坐标略紧凑 */
-        .el-table .cell {
-            word-break: break-word;
+        /* 任务面板 */
+        .dispatch-card .preset-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
         }
+        .dispatch-card .preset-row .el-button {
+            font-size: 12px;
+        }
+
+        .task-log {
+            margin-top: 16px;
+            max-height: 280px;
+            overflow-y: auto;
+            border-top: 1px dashed #e5e7eb;
+            padding-top: 12px;
+        }
+
+        .task-log-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            background: #f8fafc;
+            margin-bottom: 4px;
+            color: #334155;
+            font-variant-numeric: tabular-nums;
+        }
+        .task-log-item .ok { color: #16a34a; }
+        .task-log-item .bad { color: #dc2626; }
     </style>
 </head>
 <body>
@@ -239,79 +277,145 @@
         </div>
     </div>
 
-    <!-- 主数据表 -->
-    <div class="main-card">
-        <div class="table-toolbar">
-            <div class="toolbar-left">
-                <strong style="font-size:15px;color:#0f172a;">设备状态总览</strong>
-                <span style="color:#94a3b8;font-size:12px;">实时来自 Kafka → MongoDB</span>
+    <!-- 主区域：左任务面板 + 右数据表 -->
+    <div class="main-grid">
+        <!-- ============== 任务下发面板 ============== -->
+        <div class="main-card dispatch-card">
+            <div class="card-title">
+                <el-icon><Promotion /></el-icon> 任务下发（GM → 设备）
             </div>
-            <div>
-                <el-input
-                        v-model="filterText"
-                        placeholder="搜索设备 ID / 类型 / 状态"
-                        style="width: 260px;"
-                        clearable
-                        :prefix-icon="Search"
-                />
+
+            <!-- 一键填充快捷按钮 -->
+            <div class="preset-row">
+                <span style="font-size:12px;color:#94a3b8;align-self:center;">快捷：</span>
+                <el-button size="small" plain @click="presetDrone">无人机巡逻</el-button>
+                <el-button size="small" plain @click="presetDog">机器狗归位</el-button>
+                <el-button size="small" plain @click="presetReturn">全员返航</el-button>
+            </div>
+
+            <el-form :model="form" label-position="top" size="default">
+                <el-form-item label="设备 ID">
+                    <el-select v-model="form.deviceId" placeholder="选择或输入设备 ID"
+                               filterable allow-create default-first-option style="width:100%">
+                        <el-option v-for="d in devices" :key="d.deviceId"
+                                   :label="d.deviceId + '  (' + d.deviceType + ')'"
+                                   :value="d.deviceId" />
+                    </el-select>
+                </el-form-item>
+
+                <el-form-item label="指令 (Command)">
+                    <el-select v-model="form.command" placeholder="选择指令" style="width:100%">
+                        <el-option label="GOTO — 前往目标点" value="GOTO" />
+                        <el-option label="PATROL — 区域巡逻" value="PATROL" />
+                        <el-option label="RETURN — 返航" value="RETURN" />
+                        <el-option label="STOP — 立即停止" value="STOP" />
+                    </el-select>
+                </el-form-item>
+
+                <el-form-item label="目标 X 坐标">
+                    <el-input-number v-model="form.targetX" :precision="2" :step="1"
+                                     :min="-1000" :max="1000" style="width:100%" />
+                </el-form-item>
+
+                <el-form-item label="目标 Y 坐标">
+                    <el-input-number v-model="form.targetY" :precision="2" :step="1"
+                                     :min="-1000" :max="1000" style="width:100%" />
+                </el-form-item>
+
+                <el-button type="primary" :loading="submitting"
+                           @click="submitTask" style="width:100%;">
+                    <el-icon style="vertical-align:-2px;"><Position /></el-icon>
+                    下发任务到 Kafka
+                </el-button>
+            </el-form>
+
+            <!-- 任务下发历史 -->
+            <div class="task-log" v-if="taskLog.length">
+                <div style="font-size:12px;color:#64748b;margin-bottom:6px;">最近下发记录</div>
+                <div v-for="(t, i) in taskLog" :key="i" class="task-log-item">
+                    <span>
+                        <span :class="t.ok ? 'ok' : 'bad'">{{ t.ok ? '✓' : '✗' }}</span>
+                        {{ t.deviceId }} · {{ t.command }} → ({{ t.targetX }}, {{ t.targetY }})
+                    </span>
+                    <span>{{ t.time }}</span>
+                </div>
             </div>
         </div>
 
-        <el-table
-                :data="filteredDevices"
-                stripe
-                style="width: 100%"
-                empty-text="暂无设备数据，请确认 Kafka 与模拟器已启动"
-                :default-sort="{ prop: 'battery', order: 'descending' }"
-        >
-            <el-table-column prop="deviceId"   label="设备 ID"    min-width="160" sortable />
-            <el-table-column prop="deviceType" label="类型"      min-width="120">
-                <template #default="{ row }">
-                    <el-tag :type="row.deviceType === 'Drone' ? 'primary' : 'success'" effect="light" round>
-                        {{ row.deviceType }}
-                    </el-tag>
-                </template>
-            </el-table-column>
+        <!-- ============== 设备数据表 ============== -->
+        <div class="main-card">
+            <div class="table-toolbar">
+                <div class="toolbar-left">
+                    <strong style="font-size:15px;color:#0f172a;">设备状态总览</strong>
+                    <span style="color:#94a3b8;font-size:12px;">实时来自 Kafka → MongoDB</span>
+                </div>
+                <div>
+                    <el-input
+                            v-model="filterText"
+                            placeholder="搜索设备 ID / 类型 / 状态"
+                            style="width: 260px;"
+                            clearable
+                            :prefix-icon="Search"
+                    />
+                </div>
+            </div>
 
-            <el-table-column prop="battery" label="电量" min-width="220" sortable>
-                <template #default="{ row }">
-                    <div class="battery-bar">
-                        <div class="bar">
-                            <span :style="batteryStyle(row.battery)"></span>
+            <el-table
+                    :data="filteredDevices"
+                    stripe
+                    style="width: 100%"
+                    empty-text="暂无设备数据，请确认 Kafka 与模拟器已启动"
+                    :default-sort="{ prop: 'battery', order: 'descending' }"
+            >
+                <el-table-column prop="deviceId"   label="设备 ID"    min-width="160" sortable />
+                <el-table-column prop="deviceType" label="类型"      min-width="120">
+                    <template #default="{ row }">
+                        <el-tag :type="row.deviceType === 'Drone' ? 'primary' : 'success'" effect="light" round>
+                            {{ row.deviceType }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+
+                <el-table-column prop="battery" label="电量" min-width="220" sortable>
+                    <template #default="{ row }">
+                        <div class="battery-bar">
+                            <div class="bar">
+                                <span :style="batteryStyle(row.battery)"></span>
+                            </div>
+                            <div class="val">{{ row.battery.toFixed(1) }}%</div>
                         </div>
-                        <div class="val">{{ row.battery.toFixed(1) }}%</div>
-                    </div>
-                </template>
-            </el-table-column>
+                    </template>
+                </el-table-column>
 
-            <el-table-column prop="xCoordinate" label="X 坐标" min-width="110" sortable>
-                <template #default="{ row }">{{ row.xCoordinate.toFixed(2) }}</template>
-            </el-table-column>
+                <el-table-column prop="xCoordinate" label="X 坐标" min-width="110" sortable>
+                    <template #default="{ row }">{{ row.xCoordinate.toFixed(2) }}</template>
+                </el-table-column>
 
-            <el-table-column prop="yCoordinate" label="Y 坐标" min-width="110" sortable>
-                <template #default="{ row }">{{ row.yCoordinate.toFixed(2) }}</template>
-            </el-table-column>
+                <el-table-column prop="yCoordinate" label="Y 坐标" min-width="110" sortable>
+                    <template #default="{ row }">{{ row.yCoordinate.toFixed(2) }}</template>
+                </el-table-column>
 
-            <el-table-column prop="status" label="状态" min-width="140">
-                <template #default="{ row }">
-                    <el-tag :type="statusTagType(row.status)" effect="dark">
-                        {{ row.status }}
-                    </el-tag>
-                </template>
-            </el-table-column>
-        </el-table>
+                <el-table-column prop="status" label="状态" min-width="140">
+                    <template #default="{ row }">
+                        <el-tag :type="statusTagType(row.status)" effect="dark">
+                            {{ row.status }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+            </el-table>
+        </div>
     </div>
 </div>
 
 <script>
-    const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+    const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
 
     const app = createApp({
         setup() {
+            // ====== 设备数据 ======
             const devices = ref([]);
             const filterText = ref('');
             const lastUpdated = ref('');
-
             let timer = null;
 
             const fetchDevices = async () => {
@@ -323,7 +427,6 @@
                     lastUpdated.value = new Date().toLocaleTimeString('zh-CN', { hour12: false });
                 } catch (e) {
                     console.warn('fetch /api/devices failed:', e);
-                    // 不清空数据，保持上一次显示，避免表格闪烁
                 }
             };
 
@@ -371,25 +474,104 @@
                 };
             };
 
+            // ====== 任务下发 ======
+            const form = reactive({
+                deviceId: '',
+                command:  'GOTO',
+                targetX:  0,
+                targetY:  0
+            });
+            const submitting = ref(false);
+            const taskLog = ref([]); // {deviceId, command, targetX, targetY, time, ok, err}
+
+            const presetDrone = () => Object.assign(form, {
+                deviceId: 'DRONE-001', command: 'PATROL', targetX: 25.0, targetY: -8.5
+            });
+            const presetDog = () => Object.assign(form, {
+                deviceId: 'ROBOTDOG-001', command: 'GOTO', targetX: 5.0, targetY: 5.0
+            });
+            const presetReturn = () => Object.assign(form, {
+                deviceId: '', command: 'RETURN', targetX: 0, targetY: 0
+            });
+
+            const submitTask = async () => {
+                if (!form.deviceId) {
+                    ElementPlus.ElMessage.warning('请选择或输入设备 ID');
+                    return;
+                }
+                if (!form.command) {
+                    ElementPlus.ElMessage.warning('请选择指令');
+                    return;
+                }
+                submitting.value = true;
+                const entry = {
+                    deviceId: form.deviceId,
+                    command:  form.command,
+                    targetX:  form.targetX,
+                    targetY:  form.targetY,
+                    time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                    ok: false,
+                    err: ''
+                };
+                try {
+                    const resp = await fetch('/api/tasks/dispatch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deviceId: form.deviceId,
+                            command:  form.command,
+                            targetX:  form.targetX,
+                            targetY:  form.targetY
+                        })
+                    });
+                    const body = await resp.json().catch(() => ({}));
+                    if (!resp.ok || body.ok === false) {
+                        throw new Error(body.error || ('HTTP ' + resp.status));
+                    }
+                    entry.ok = true;
+                    ElementPlus.ElMessage({
+                        message: `已下发：${entry.deviceId} · ${entry.command} → (${entry.targetX}, ${entry.targetY})`,
+                        type: 'success',
+                        duration: 2500
+                    });
+                } catch (e) {
+                    entry.ok = false;
+                    entry.err = e.message || String(e);
+                    ElementPlus.ElMessage({
+                        message: '下发失败：' + entry.err,
+                        type: 'error',
+                        duration: 3500
+                    });
+                } finally {
+                    taskLog.value.unshift(entry);
+                    if (taskLog.value.length > 20) taskLog.value.pop();
+                    submitting.value = false;
+                }
+            };
+
+            // ====== 生命周期 ======
             onMounted(() => {
                 fetchDevices();
                 timer = setInterval(fetchDevices, 3000);
             });
-
             onUnmounted(() => {
                 if (timer) clearInterval(timer);
             });
 
             return {
-                devices, filteredDevices, filterText, stats,
-                lastUpdated, statusTagType, batteryStyle,
-                // Element Plus Icons
+                devices, filteredDevices, filterText, stats, lastUpdated,
+                statusTagType, batteryStyle,
+                form, submitting, taskLog,
+                presetDrone, presetDog, presetReturn, submitTask,
+                // Icons
                 Search: ElementPlusIconsVue.Search,
                 Cpu: ElementPlusIconsVue.Cpu,
                 Aim: ElementPlusIconsVue.Aim,
                 SuccessFilled: ElementPlusIconsVue.SuccessFilled,
                 WarningFilled: ElementPlusIconsVue.WarningFilled,
-                Histogram: ElementPlusIconsVue.Histogram
+                Histogram: ElementPlusIconsVue.Histogram,
+                Promotion: ElementPlusIconsVue.Promotion,
+                Position: ElementPlusIconsVue.Position
             };
         }
     });
