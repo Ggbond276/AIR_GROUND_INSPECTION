@@ -1,0 +1,141 @@
+version: "3.8"
+
+# ============================================================
+# Air-Ground Inspection Platform - Local Dev Stack
+# ============================================================
+# Services:
+#   - MongoDB        : 27017   (device status persistence)
+#   - Zookeeper      : 2181    (Kafka coordinator)
+#   - Kafka          : 9092    (message queue)
+#   - Elasticsearch  : 9200    (full-text search / analytics, v7.17.10)
+#
+# Usage:
+#   docker compose up -d
+#   docker compose down -v          # stop & remove volumes (clean state)
+# ============================================================
+
+services:
+
+  # ------------------------------------------------------------
+  # MongoDB - device status storage
+  # ------------------------------------------------------------
+  mongodb:
+    image: mongo:7
+    container_name: inspection-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: inspection
+      # 如果需要鉴权，可解开下面两行，并在客户端用对应账号连接
+      # MONGO_INITDB_ROOT_USERNAME: admin
+      # MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------
+  # Zookeeper - Kafka 依赖
+  # ------------------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: inspection-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+
+  # ------------------------------------------------------------
+  # Kafka - 消息队列
+  # ------------------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: inspection-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"        # 宿主机访问
+      - "29092:29092"      # 容器间访问（其他服务通过这个连）
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # 监听设置：容器内 + 宿主机都能连
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  # ------------------------------------------------------------
+  # Elasticsearch 7.17.10 (单节点，禁用安全)
+  # ------------------------------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: inspection-elasticsearch
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      # 单节点模式
+      - discovery.type=single-node
+      - node.name=inspection-es
+      # 禁用安全（按要求）
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      # JVM 堆内存
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      # 关闭 bootstrap 内存锁，方便在开发机里跑
+      - bootstrap.memory_lock=false
+      # 集群名称
+      - cluster.name=inspection-cluster
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+      - es_logs:/usr/share/elasticsearch/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+# ============================================================
+# Named volumes (持久化数据)
+# ============================================================
+volumes:
+  mongodb_data:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
+  es_data:
+  es_logs:
+
+# ============================================================
+# 自定义网络（可选，但更推荐）
+# ============================================================
+networks:
+  default:
+    name: inspection-net

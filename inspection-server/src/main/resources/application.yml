@@ -1,0 +1,46 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: inspection-server
+
+  # ---------------- MongoDB ----------------
+  data:
+    mongodb:
+      # 默认无鉴权，直连 localhost:27017
+      uri: mongodb://localhost:27017/inspection
+      database: inspection
+      auto-index-creation: true
+
+  # ---------------- Kafka ----------------
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: inspection-server
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # 容错：topic 不存在时不要让应用启动失败
+        missing.topics.fatal: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+      missing-topics-fatal: false
+
+# ---------------- 自定义业务配置 ----------------
+inspection:
+  kafka:
+    topic:
+      device-telemetry: device-telemetry
+
+logging:
+  level:
+    root: INFO
+    com.inspection.server: DEBUG
+    org.springframework.kafka: INFO
+    org.mongodb.driver: WARN

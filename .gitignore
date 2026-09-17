@@ -1,0 +1,11 @@
+# Maven 编译产物
+target/
+*.jar
+*.class
+
+# IDE 和系统缓存
+.idea/
+*.iml
+.vscode/
+.DS_Store
+*.log
