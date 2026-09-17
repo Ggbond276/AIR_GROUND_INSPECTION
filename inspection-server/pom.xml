@@ -48,6 +48,46 @@
             <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
         </dependency>
 
+        <!-- Hadoop HDFS 客户端（HDFS 文件存储） -->
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-client</artifactId>
+            <version>3.3.6</version>
+            <exclusions>
+                <!--
+                  Spring Boot 3 自带 SLF4J 2 + Logback。
+                  Hadoop 3.3.x 默认会把 slf4j-reload4j 拉进来，它会抢 SLF4J binding，
+                  导致启动时报 "ClassCastException: StaticLoggerBinder" 之类的崩溃。
+                  这里把 Hadoop 自带的 SLF4J binding + reload4j 实现都剔掉，
+                  让 Spring Boot 的 Logback 接管日志。
+                -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-reload4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>ch.qos.reload4j</groupId>
+                    <artifactId>reload4j</artifactId>
+                </exclusion>
+                <!-- 旧版 log4j 1.x 也不需要 -->
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>log4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+                <!--
+                  commons-logging 和 Spring 的 JCL 桥接冲突，JDK 17 上还会触发 access warnings
+                -->
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

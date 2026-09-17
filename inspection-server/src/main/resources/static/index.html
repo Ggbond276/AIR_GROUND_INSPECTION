@@ -234,6 +234,42 @@
             align-items: center;
             gap: 8px;
         }
+
+        /* 图片上传 */
+        .upload-demo { width: 100%; }
+        .el-upload__tip {
+            color: #94a3b8;
+            font-size: 12px;
+            margin-top: 6px;
+            line-height: 1.6;
+        }
+        .upload-result {
+            margin-top: 14px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: #f0fdf4;
+            color: #166534;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #bbf7d0;
+        }
+        .upload-result code {
+            background: #dcfce7;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        .upload-result.is-error {
+            background: #fef2f2;
+            color: #991b1b;
+            border-color: #fecaca;
+        }
+        .upload-result.is-error code {
+            background: #fee2e2;
+        }
     </style>
 </head>
 <body>
@@ -286,6 +322,52 @@
 
     <!-- 主区域：左任务面板 + 右数据表 -->
     <div class="main-grid">
+        <!-- ============== 巡检图片上传（HDFS） ============== -->
+        <div class="main-card" style="grid-column: 1 / -1; margin-bottom: 16px;">
+            <div class="card-title">
+                <el-icon><Picture /></el-icon> 巡检图片上传（HDFS）
+            </div>
+
+            <el-upload
+                    class="upload-demo"
+                    action="/api/images/upload"
+                    name="file"
+                    :headers="{ 'X-Upload-Source': 'gm-console' }"
+                    :show-file-list="true"
+                    :limit="1"
+                    accept="image/*"
+                    :on-success="onUploadSuccess"
+                    :on-error="onUploadError"
+                    :before-upload="beforeUpload"
+            >
+                <el-button type="primary" :loading="uploading">
+                    <el-icon style="vertical-align:-2px;"><Upload /></el-icon>
+                    选择图片上传到 HDFS
+                </el-button>
+                <template #tip>
+                    <div class="el-upload__tip">
+                        支持 jpg / png / gif，单次上传一张。上传成功后会返回 HDFS 路径，例如
+                        <code>hdfs://localhost:9000/inspection-images/xxx.png</code>
+                    </div>
+                </template>
+            </el-upload>
+
+            <div v-if="lastUpload" class="upload-result" :class="{ 'is-error': !lastUpload.ok }">
+                <template v-if="lastUpload.ok">
+                    <el-icon style="vertical-align:-2px; color:#16a34a;"><CircleCheck /></el-icon>
+                    <span>
+                        上传成功：
+                        <code>{{ lastUpload.hdfsPath }}</code>
+                        （{{ formatBytes(lastUpload.size) }}）
+                    </span>
+                </template>
+                <template v-else>
+                    <el-icon style="vertical-align:-2px; color:#dc2626;"><CircleClose /></el-icon>
+                    <span>上传失败：{{ lastUpload.error }}</span>
+                </template>
+            </div>
+        </div>
+
         <!-- ============== 任务下发面板 ============== -->
         <div class="main-card dispatch-card">
             <div class="card-title">
@@ -548,6 +630,67 @@
             const submitting = ref(false);
             const taskLog = ref([]); // {deviceId, command, targetX, targetY, time, ok, err}
 
+// ====== 图片上传（HDFS） ======
+            const uploading = ref(false);
+            const lastUpload = ref(null); // { ok, hdfsPath, size, error, ... }
+
+            const beforeUpload = (file) => {
+                uploading.value = true;
+                lastUpload.value = null;
+                const isImg = file.type.startsWith('image/');
+                const isLt20M = file.size / 1024 / 1024 < 20;
+                if (!isImg) {
+                    ElementPlus.ElMessage.error('只支持图片文件');
+                    uploading.value = false;
+                    return false;
+                }
+                if (!isLt20M) {
+                    ElementPlus.ElMessage.error('单张图片不能超过 20MB');
+                    uploading.value = false;
+                    return false;
+                }
+                return true;
+            };
+
+            const onUploadSuccess = (response, file) => {
+                uploading.value = false;
+                if (response && response.ok) {
+                    lastUpload.value = response;
+                    ElementPlus.ElNotification({
+                        title: '图片已上传到 HDFS',
+                        message: response.hdfsPath,
+                        type: 'success',
+                        duration: 4000
+                    });
+                } else {
+                    lastUpload.value = {
+                        ok: false,
+                        error: (response && response.error) || '未知错误'
+                    };
+                    ElementPlus.ElMessage.error(lastUpload.value.error);
+                }
+            };
+
+            const onUploadError = (err, file) => {
+                uploading.value = false;
+                let msg = '上传失败';
+                if (err && err.message) msg = err.message;
+                lastUpload.value = { ok: false, error: msg };
+                ElementPlus.ElMessage.error(msg);
+            };
+
+            const formatBytes = (n) => {
+                if (!n && n !== 0) return '—';
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let i = 0;
+                let v = n;
+                while (v >= 1024 && i < units.length - 1) {
+                    v /= 1024;
+                    i++;
+                }
+                return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + ' ' + units[i];
+            };
+
             // ====== 告警搜索 ======
             const alertKeyword = ref('');
             const alertResults = ref([]);
@@ -679,6 +822,9 @@
                 // 告警搜索
                 alertKeyword, alertResults, alertSearching,
                 alertResultText, formatTs, searchAlerts,
+                // 图片上传
+                uploading, lastUpload, beforeUpload,
+                onUploadSuccess, onUploadError, formatBytes,
                 // Icons
                 Search: ElementPlusIconsVue.Search,
                 Cpu: ElementPlusIconsVue.Cpu,
@@ -688,7 +834,11 @@
                 Histogram: ElementPlusIconsVue.Histogram,
                 Promotion: ElementPlusIconsVue.Promotion,
                 Position: ElementPlusIconsVue.Position,
-                Bell: ElementPlusIconsVue.Bell
+                Bell: ElementPlusIconsVue.Bell,
+                Upload: ElementPlusIconsVue.Upload,
+                Picture: ElementPlusIconsVue.Picture,
+                CircleCheck: ElementPlusIconsVue.CircleCheck,
+                CircleClose: ElementPlusIconsVue.CircleClose
             };
         }
     });

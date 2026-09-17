@@ -8,6 +8,7 @@ version: "3.8"
 #   - Zookeeper      : 2181    (Kafka coordinator)
 #   - Kafka          : 9092    (message queue)
 #   - Elasticsearch  : 9200    (full-text search / analytics, v8.x single-node, no security)
+#   - HDFS (Hadoop)  : 9000 RPC, 9870 Web UI   (image storage)
 #
 # Usage:
 #   docker compose up -d
@@ -122,6 +123,56 @@ services:
       retries: 10
       start_period: 30s
 
+  # ------------------------------------------------------------
+  # HDFS - 单节点 Hadoop (bde2020, Hadoop 3.2.1, JDK 8)
+  # ------------------------------------------------------------
+  # namenode: NameNode + RPC(9000) + Web UI(9870)
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: inspection-hdfs-namenode
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # HDFS RPC
+      - "9870:9870"   # Web UI
+    environment:
+      - CLUSTER_NAME=inspection
+      # fs.defaultFS 通过环境变量注入 core-site.xml
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9870/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # datanode: 真正存 block 的节点；用 SERVICE_PRECONDITION 等 NameNode 先就绪
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: inspection-hdfs-datanode
+    restart: unless-stopped
+    depends_on:
+      namenode:
+        condition: service_healthy
+    environment:
+      # 等 NameNode Web UI 就绪后再启动 DataNode
+      - SERVICE_PRECONDITION="namenode:9870"
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_permissions_enabled=false
+    volumes:
+      - datanode_data:/hadoop/dfs/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9864/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
 # ============================================================
 # Named volumes (持久化数据)
 # ============================================================
@@ -132,6 +183,8 @@ volumes:
   kafka_data:
   es_data:
   es_logs:
+  namenode_data:
+  datanode_data:
 
 # ============================================================
 # 自定义网络（可选，但更推荐）
