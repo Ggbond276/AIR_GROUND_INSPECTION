@@ -227,6 +227,13 @@
         }
         .task-log-item .ok { color: #16a34a; }
         .task-log-item .bad { color: #dc2626; }
+
+        /* 告警搜索 */
+        .alert-search-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
     </style>
 </head>
 <body>
@@ -344,7 +351,64 @@
 
         <!-- ============== 设备数据表 ============== -->
         <div class="main-card">
-            <div class="table-toolbar">
+            <!-- 新增：告警搜索 -->
+            <div class="card-title">
+                <el-icon><Bell /></el-icon> 告警搜索（Elasticsearch）
+            </div>
+
+            <div class="alert-search-row">
+                <el-input
+                        v-model="alertKeyword"
+                        placeholder="输入关键字，例如 LOW / DRONE-001 / BATTERY"
+                        style="flex:1;"
+                        clearable
+                        @keyup.enter="searchAlerts"
+                        :prefix-icon="Search"
+                />
+                <el-button type="primary" :loading="alertSearching"
+                           @click="searchAlerts">
+                    <el-icon style="vertical-align:-2px;"><Search /></el-icon>
+                    搜索告警
+                </el-button>
+                <span style="font-size:12px;color:#94a3b8;margin-left:8px;">
+                    {{ alertResultText }}
+                </span>
+            </div>
+
+            <el-table
+                    :data="alertResults"
+                    stripe
+                    style="width: 100%; margin-top: 12px;"
+                    empty-text="暂无告警结果，试试搜索 'LOW' / 'BATTERY'"
+                    :default-sort="{ prop: 'timestamp', order: 'descending' }"
+                    max-height="240"
+                    :cell-style="{ verticalAlign: 'middle' }"
+            >
+                <el-table-column label="设备 ID" min-width="160">
+                    <template #default="{ row }">
+                        <span style="font-family: ui-monospace, Menlo, Consolas, monospace;">
+                            {{ row.deviceId }}
+                        </span>
+                    </template>
+                </el-table-column>
+                <el-table-column label="告警内容" min-width="280">
+                    <template #default="{ row }">
+                        <el-tag size="small" type="danger" effect="plain">
+                            {{ row.alertMessage }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column label="时间" min-width="200" sortable
+                                 :sort-by="row => row.timestamp || 0">
+                    <template #default="{ row }">
+                        <span style="font-variant-numeric: tabular-nums; color:#475569;">
+                            {{ formatTs(row.timestamp) }}
+                        </span>
+                    </template>
+                </el-table-column>
+            </el-table>
+
+            <div class="table-toolbar" style="margin-top:24px;">
                 <div class="toolbar-left">
                     <strong style="font-size:15px;color:#0f172a;">设备状态总览</strong>
                     <span style="color:#94a3b8;font-size:12px;">实时来自 Kafka → MongoDB</span>
@@ -484,6 +548,55 @@
             const submitting = ref(false);
             const taskLog = ref([]); // {deviceId, command, targetX, targetY, time, ok, err}
 
+            // ====== 告警搜索 ======
+            const alertKeyword = ref('');
+            const alertResults = ref([]);
+            const alertSearching = ref(false);
+            const alertResultText = ref('尚未搜索');
+
+            const formatTs = (ts) => {
+                if (!ts) return '—';
+                const n = Number(ts);
+                if (Number.isNaN(n) || n <= 0) return String(ts);
+                const d = new Date(n);
+                if (Number.isNaN(d.getTime())) return String(ts);
+                return d.toLocaleString('zh-CN', { hour12: false });
+            };
+
+            const searchAlerts = async () => {
+                const kw = alertKeyword.value.trim();
+                if (!kw) {
+                    ElementPlus.ElMessage.warning('请输入搜索关键字');
+                    return;
+                }
+                alertSearching.value = true;
+                try {
+                    const resp = await fetch(
+                        '/api/alerts/search?keyword=' + encodeURIComponent(kw),
+                        { cache: 'no-store' }
+                    );
+                    const body = await resp.json().catch(() => ({}));
+                    if (!resp.ok || body.ok === false) {
+                        throw new Error(body.error || ('HTTP ' + resp.status));
+                    }
+                    alertResults.value = Array.isArray(body.data) ? body.data : [];
+                    alertResultText.value = `命中 ${body.total ?? alertResults.value.length} 条`;
+                    ElementPlus.ElMessage({
+                        message: `告警搜索完成：${alertResultText.value}`,
+                        type: 'success', duration: 1500
+                    });
+                } catch (e) {
+                    alertResults.value = [];
+                    alertResultText.value = '搜索失败：' + (e.message || e);
+                    ElementPlus.ElMessage({
+                        message: alertResultText.value,
+                        type: 'error', duration: 3000
+                    });
+                } finally {
+                    alertSearching.value = false;
+                }
+            };
+
             const presetDrone = () => Object.assign(form, {
                 deviceId: 'DRONE-001', command: 'PATROL', targetX: 25.0, targetY: -8.5
             });
@@ -563,6 +676,9 @@
                 statusTagType, batteryStyle,
                 form, submitting, taskLog,
                 presetDrone, presetDog, presetReturn, submitTask,
+                // 告警搜索
+                alertKeyword, alertResults, alertSearching,
+                alertResultText, formatTs, searchAlerts,
                 // Icons
                 Search: ElementPlusIconsVue.Search,
                 Cpu: ElementPlusIconsVue.Cpu,
@@ -571,7 +687,8 @@
                 WarningFilled: ElementPlusIconsVue.WarningFilled,
                 Histogram: ElementPlusIconsVue.Histogram,
                 Promotion: ElementPlusIconsVue.Promotion,
-                Position: ElementPlusIconsVue.Position
+                Position: ElementPlusIconsVue.Position,
+                Bell: ElementPlusIconsVue.Bell
             };
         }
     });

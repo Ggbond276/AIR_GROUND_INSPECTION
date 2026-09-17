@@ -35,21 +35,23 @@ public class DeviceSimulator {
     private static final String BOOTSTRAP_SERVERS = "localhost:9092";
     private static final String TOPIC_TELEMETRY = "device-telemetry";
     private static final String TOPIC_TASKS     = "device-tasks";
+    private static final String TOPIC_ALERTS    = "device-alerts";
     private static final String CONSUMER_GROUP  = "device-simulator";
     private static final long SEND_INTERVAL_MS = 3000L;
+    private static final double LOW_BATTERY_THRESHOLD = 20.0;
 
     private static final Random RANDOM = new Random();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final Device DRONE = new Device(
-            "DRONE-001", "Drone", 95.0, 0.0, 0.0, "ACTIVE");
+            "DRONE-001", "Drone", 21.0, 0.0, 0.0, "ACTIVE");
 
     private static final Device ROBOT_DOG = new Device(
-            "ROBOTDOG-001", "RobotDog", 88.0, 10.0, 5.0, "ACTIVE");
+            "ROBOTDOG-001", "RobotDog", 21.0, 10.0, 5.0, "ACTIVE");
 
     public static void main(String[] args) throws Exception {
         System.out.println("Starting device simulator -> Kafka " + BOOTSTRAP_SERVERS
-                + " topics=[" + TOPIC_TELEMETRY + ", " + TOPIC_TASKS + "]");
+                + " topics=[" + TOPIC_TELEMETRY + ", " + TOPIC_TASKS + ", " + TOPIC_ALERTS + "]");
 
         Producer<String, String> producer = new KafkaProducer<>(buildProducerProps());
 
@@ -73,6 +75,9 @@ public class DeviceSimulator {
         }));
 
         // ----- 主循环：发遥测 -----
+        // 同一个 tick 内避免重复发出 LOW BATTERY 告警
+        boolean wasDroneLow  = false;
+        boolean wasDogLow    = false;
         try {
             while (running.get()) {
                 tick(DRONE);
@@ -80,6 +85,10 @@ public class DeviceSimulator {
 
                 send(producer, TOPIC_TELEMETRY, DRONE.deviceId, toJson(DRONE));
                 send(producer, TOPIC_TELEMETRY, ROBOT_DOG.deviceId, toJson(ROBOT_DOG));
+
+                // 电量 < 阈值时，下发告警；只在跨越阈值时触发一次（避免每 3 秒狂刷）
+                wasDroneLow = maybeSendLowBatteryAlert(producer, DRONE, wasDroneLow);
+                wasDogLow   = maybeSendLowBatteryAlert(producer, ROBOT_DOG, wasDogLow);
 
                 try {
                     Thread.sleep(SEND_INTERVAL_MS);
@@ -91,6 +100,32 @@ public class DeviceSimulator {
         } finally {
             producer.close(Duration.ofSeconds(5));
         }
+    }
+
+    /**
+     * 如果电量跌破阈值，并且这一次之前还没触发过告警，就向 device-alerts 投递一条 JSON。
+     *
+     * 消息格式：
+     * {"deviceId":"DRONE-001","alertMessage":"LOW BATTERY: Battery at 18%","timestamp":1700000000000}
+     */
+    private static boolean maybeSendLowBatteryAlert(
+            Producer<String, String> producer, Device device, boolean alreadyFired) {
+        if (device.battery >= LOW_BATTERY_THRESHOLD) {
+            // 电量回升，重置告警状态
+            return false;
+        }
+        if (alreadyFired) {
+            return true;
+        }
+        int pct = (int) Math.floor(device.battery);
+        String message = String.format("LOW BATTERY: Battery at %d%%", pct);
+        String payload = String.format(
+                "{\"deviceId\":\"%s\",\"alertMessage\":\"%s\",\"timestamp\":%d}",
+                device.deviceId, message, System.currentTimeMillis());
+        System.out.printf("[ALERT] %s battery=%.2f -> sending %s%n",
+                device.deviceId, device.battery, message);
+        send(producer, TOPIC_ALERTS, device.deviceId, payload);
+        return true;
     }
 
     // ==================================================================

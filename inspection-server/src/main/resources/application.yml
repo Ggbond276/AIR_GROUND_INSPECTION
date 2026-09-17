@@ -10,10 +10,15 @@ spring:
   # ---------------- MongoDB ----------------
   data:
     mongodb:
-      # 默认无鉴权，直连 localhost:27017
       uri: mongodb://localhost:27017/inspection
       database: inspection
       auto-index-creation: true
+
+  # ---------------- Elasticsearch (v8 single-node, no security) ----------------
+  elasticsearch:
+    uris: http://localhost:9200
+    connection-timeout: 5s
+    socket-timeout: 30s
 
   # ---------------- Kafka ----------------
   kafka:
@@ -24,7 +29,6 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       properties:
-        # 容错：topic 不存在时不要让应用启动失败
         missing.topics.fatal: false
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -38,6 +42,7 @@ inspection:
     topic:
       device-telemetry: device-telemetry
       device-tasks: device-tasks
+      device-alerts: device-alerts
 
 logging:
   level:
@@ -45,3 +50,5 @@ logging:
     com.inspection.server: DEBUG
     org.springframework.kafka: INFO
     org.mongodb.driver: WARN
+    # 想看 ES 客户端日志可解开下一行
+    # org.springframework.data.elasticsearch.client.WIRE: TRACE

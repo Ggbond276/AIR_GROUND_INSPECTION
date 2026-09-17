@@ -1,7 +1,9 @@
 package com.inspection.server.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.inspection.server.entity.DeviceAlert;
 import com.inspection.server.entity.DeviceData;
+import com.inspection.server.repository.DeviceAlertRepository;
 import com.inspection.server.repository.DeviceDataRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
@@ -32,6 +35,7 @@ public class DeviceController {
     private static final Logger log = LoggerFactory.getLogger(DeviceController.class);
 
     private final DeviceDataRepository repository;
+    private final DeviceAlertRepository alertRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
@@ -40,9 +44,11 @@ public class DeviceController {
     private String deviceTasksTopic;
 
     public DeviceController(DeviceDataRepository repository,
+                            DeviceAlertRepository alertRepository,
                             KafkaTemplate<String, String> kafkaTemplate,
                             ObjectMapper objectMapper) {
         this.repository = repository;
+        this.alertRepository = alertRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
     }
@@ -82,6 +88,67 @@ public class DeviceController {
     @GetMapping("/health")
     public Map<String, Object> health() {
         return Map.of("status", "UP");
+    }
+
+    /**
+     * 告警全文检索（GM 在 Console 中查询）。
+     * GET /api/alerts/search?keyword=LOW
+     *
+     * 命中规则：基于 {@code findByAlertMessageContaining}，
+     * 对 ES 索引 device_alerts 的 alertMessage 字段做分词匹配。
+     */
+    @GetMapping("/alerts/search")
+    public ResponseEntity<?> searchAlerts(
+            @RequestParam(value = "keyword", required = false) String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "ok", false, "error", "keyword 不能为空"));
+        }
+        try {
+            List<DeviceAlert> hits = alertRepository.findByAlertMessageContaining(keyword);
+
+            List<Map<String, Object>> data = hits.stream()
+                    .map(a -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("id", a.getId());
+                        m.put("deviceId", a.getDeviceId());
+                        m.put("alertMessage", a.getAlertMessage());
+                        m.put("timestamp", a.getTimestamp());
+                        return m;
+                    })
+                    .collect(Collectors.toList());
+
+            // 按时间倒序（ES 默认按 _score，但这里按业务时间更直观）
+            data.sort((x, y) -> {
+                Long tx = asLong(x.get("timestamp"));
+                Long ty = asLong(y.get("timestamp"));
+                if (tx == null && ty == null) return 0;
+                if (tx == null) return 1;
+                if (ty == null) return -1;
+                return Long.compare(ty, tx);
+            });
+
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", true);
+            resp.put("keyword", keyword);
+            resp.put("total", data.size());
+            resp.put("data", data);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            log.error("Alert search failed for keyword='{}': {}", keyword, e.getMessage(), e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "ok", false, "error", "ES 查询失败: " + e.getMessage()));
+        }
+    }
+
+    private static Long asLong(Object o) {
+        if (o == null) return null;
+        if (o instanceof Number n) return n.longValue();
+        try {
+            return Long.parseLong(String.valueOf(o));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

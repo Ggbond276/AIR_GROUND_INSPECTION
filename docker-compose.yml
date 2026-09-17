@@ -7,7 +7,7 @@ version: "3.8"
 #   - MongoDB        : 27017   (device status persistence)
 #   - Zookeeper      : 2181    (Kafka coordinator)
 #   - Kafka          : 9092    (message queue)
-#   - Elasticsearch  : 9200    (full-text search / analytics, v7.17.10)
+#   - Elasticsearch  : 9200    (full-text search / analytics, v8.x single-node, no security)
 #
 # Usage:
 #   docker compose up -d
@@ -84,10 +84,10 @@ services:
       - kafka_data:/var/lib/kafka/data
 
   # ------------------------------------------------------------
-  # Elasticsearch 7.17.10 (单节点，禁用安全)
+  # Elasticsearch 8.x (单节点，禁用安全，匹配 inspection-server 的 ES 8 客户端)
   # ------------------------------------------------------------
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: inspection-elasticsearch
     restart: unless-stopped
     ports:
@@ -102,7 +102,7 @@ services:
       - xpack.security.enrollment.enabled=false
       - xpack.security.http.ssl.enabled=false
       - xpack.security.transport.ssl.enabled=false
-      # JVM 堆内存
+      # JVM 堆内存（单节点开发机 1G 即可）
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
       # 关闭 bootstrap 内存锁，方便在开发机里跑
       - bootstrap.memory_lock=false
