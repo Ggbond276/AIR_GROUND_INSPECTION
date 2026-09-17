@@ -2,6 +2,7 @@ package com.inspection.server.repository;
 
 import com.inspection.server.entity.DeviceData;
 import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -26,4 +27,11 @@ public interface DeviceDataRepository extends MongoRepository<DeviceData, String
 
     /** 按 deviceType 过滤。 */
     List<DeviceData> findByDeviceType(String deviceType);
+
+    /**
+     * 获取所有设备的最新一条记录（按 deviceId 去重）。
+     * 走原生 MongoDB 聚合：$sort + $group + $first。
+     */
+    @Query(value = "[]", sort = "{ 'id': -1 }")
+    List<DeviceData> findAllRawSortedByIdDesc();
 }

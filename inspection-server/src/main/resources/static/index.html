@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空地一体巡检平台 · GM Console</title>
+
+    <!-- Element Plus 样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <!-- Element Plus 图标 -->
+    <link rel="stylesheet" href="https://unpkg.com/@element-plus/icons-vue">
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <!-- Element Plus -->
+    <script src="https://unpkg.com/element-plus"></script>
+    <!-- Element Plus 国际化（中文） -->
+    <script src="https://unpkg.com/element-plus/dist/locale/zh-cn.js"></script>
+    <!-- Element Plus Icons-Vue（用到的图标组件） -->
+    <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+
+    <style>
+        :root {
+            --bg-grad-1: #0f172a;
+            --bg-grad-2: #1e293b;
+            --card-bg: rgba(255, 255, 255, 0.92);
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                         "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, var(--bg-grad-1), var(--bg-grad-2));
+            color: #1f2937;
+        }
+
+        #app {
+            min-height: 100%;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            color: #ffffff;
+            font-size: 22px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .page-title .badge {
+            font-size: 12px;
+            font-weight: 400;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(56, 189, 248, 0.18);
+            color: #7dd3fc;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .stat-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 22px;
+        }
+
+        .stat-icon.blue   { background: linear-gradient(135deg, #38bdf8, #0ea5e9); }
+        .stat-icon.green  { background: linear-gradient(135deg, #4ade80, #16a34a); }
+        .stat-icon.amber  { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+        .stat-icon.purple { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
+
+        .stat-label {
+            font-size: 12px;
+            color: #64748b;
+        }
+        .stat-value {
+            font-size: 22px;
+            font-weight: 600;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+
+        .main-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px 24px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+        }
+
+        .table-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .refresh-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+            animation: pulse 1.6s infinite;
+        }
+
+        @keyframes pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6); }
+            70%  { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+
+        .battery-bar {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .battery-bar .bar {
+            position: relative;
+            flex: 1;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .battery-bar .bar > span {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            border-radius: 4px;
+            transition: width 0.4s ease;
+        }
+
+        .battery-bar .val {
+            width: 48px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            color: #475569;
+        }
+
+        .last-updated {
+            color: #94a3b8;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        /* 表格里坐标略紧凑 */
+        .el-table .cell {
+            word-break: break-word;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <!-- 顶部标题 -->
+    <div class="page-header">
+        <div class="page-title">
+            <el-icon :size="22"><Aim /></el-icon>
+            空地一体巡检平台 · GM Console
+            <span class="badge">Live</span>
+        </div>
+        <div style="color:#cbd5e1;font-size:13px;">
+            <span class="refresh-dot"></span>
+            每 3 秒自动刷新 · 最近更新：
+            <span class="last-updated">{{ lastUpdated || '—' }}</span>
+        </div>
+    </div>
+
+    <!-- 顶部统计卡 -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-icon blue"><el-icon><Cpu /></el-icon></div>
+            <div>
+                <div class="stat-label">在线设备</div>
+                <div class="stat-value">{{ stats.total }}</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon green"><el-icon><SuccessFilled /></el-icon></div>
+            <div>
+                <div class="stat-label">正常 (ACTIVE/IDLE)</div>
+                <div class="stat-value">{{ stats.normal }}</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon amber"><el-icon><WarningFilled /></el-icon></div>
+            <div>
+                <div class="stat-label">巡检中</div>
+                <div class="stat-value">{{ stats.inspecting }}</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon purple"><el-icon><Histogram /></el-icon></div>
+            <div>
+                <div class="stat-label">平均电量</div>
+                <div class="stat-value">{{ stats.avgBattery }}%</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主数据表 -->
+    <div class="main-card">
+        <div class="table-toolbar">
+            <div class="toolbar-left">
+                <strong style="font-size:15px;color:#0f172a;">设备状态总览</strong>
+                <span style="color:#94a3b8;font-size:12px;">实时来自 Kafka → MongoDB</span>
+            </div>
+            <div>
+                <el-input
+                        v-model="filterText"
+                        placeholder="搜索设备 ID / 类型 / 状态"
+                        style="width: 260px;"
+                        clearable
+                        :prefix-icon="Search"
+                />
+            </div>
+        </div>
+
+        <el-table
+                :data="filteredDevices"
+                stripe
+                style="width: 100%"
+                empty-text="暂无设备数据，请确认 Kafka 与模拟器已启动"
+                :default-sort="{ prop: 'battery', order: 'descending' }"
+        >
+            <el-table-column prop="deviceId"   label="设备 ID"    min-width="160" sortable />
+            <el-table-column prop="deviceType" label="类型"      min-width="120">
+                <template #default="{ row }">
+                    <el-tag :type="row.deviceType === 'Drone' ? 'primary' : 'success'" effect="light" round>
+                        {{ row.deviceType }}
+                    </el-tag>
+                </template>
+            </el-table-column>
+
+            <el-table-column prop="battery" label="电量" min-width="220" sortable>
+                <template #default="{ row }">
+                    <div class="battery-bar">
+                        <div class="bar">
+                            <span :style="batteryStyle(row.battery)"></span>
+                        </div>
+                        <div class="val">{{ row.battery.toFixed(1) }}%</div>
+                    </div>
+                </template>
+            </el-table-column>
+
+            <el-table-column prop="xCoordinate" label="X 坐标" min-width="110" sortable>
+                <template #default="{ row }">{{ row.xCoordinate.toFixed(2) }}</template>
+            </el-table-column>
+
+            <el-table-column prop="yCoordinate" label="Y 坐标" min-width="110" sortable>
+                <template #default="{ row }">{{ row.yCoordinate.toFixed(2) }}</template>
+            </el-table-column>
+
+            <el-table-column prop="status" label="状态" min-width="140">
+                <template #default="{ row }">
+                    <el-tag :type="statusTagType(row.status)" effect="dark">
+                        {{ row.status }}
+                    </el-tag>
+                </template>
+            </el-table-column>
+        </el-table>
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+    const app = createApp({
+        setup() {
+            const devices = ref([]);
+            const filterText = ref('');
+            const lastUpdated = ref('');
+
+            let timer = null;
+
+            const fetchDevices = async () => {
+                try {
+                    const resp = await fetch('/api/devices', { cache: 'no-store' });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    devices.value = Array.isArray(data) ? data : [];
+                    lastUpdated.value = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                } catch (e) {
+                    console.warn('fetch /api/devices failed:', e);
+                    // 不清空数据，保持上一次显示，避免表格闪烁
+                }
+            };
+
+            const filteredDevices = computed(() => {
+                const q = filterText.value.trim().toLowerCase();
+                if (!q) return devices.value;
+                return devices.value.filter(d =>
+                    (d.deviceId   || '').toLowerCase().includes(q) ||
+                    (d.deviceType || '').toLowerCase().includes(q) ||
+                    (d.status     || '').toLowerCase().includes(q)
+                );
+            });
+
+            const stats = computed(() => {
+                const list = devices.value;
+                const total = list.length;
+                const normal = list.filter(d =>
+                    d.status === 'ACTIVE' || d.status === 'IDLE'
+                ).length;
+                const inspecting = list.filter(d => d.status === 'INSPECTING').length;
+                const avgBattery = total === 0
+                    ? 0
+                    : (list.reduce((s, d) => s + (d.battery || 0), 0) / total).toFixed(1);
+                return { total, normal, inspecting, avgBattery };
+            });
+
+            const statusTagType = (status) => {
+                switch (status) {
+                    case 'ACTIVE':      return 'success';
+                    case 'IDLE':        return 'info';
+                    case 'INSPECTING':  return 'warning';
+                    case 'RETURNING':   return 'danger';
+                    default:            return '';
+                }
+            };
+
+            const batteryStyle = (b) => {
+                const w = Math.max(0, Math.min(100, b));
+                let color = '#22c55e';
+                if (w < 60) color = '#eab308';
+                if (w < 25) color = '#ef4444';
+                return {
+                    width: w + '%',
+                    background: `linear-gradient(90deg, ${color}, ${color})`
+                };
+            };
+
+            onMounted(() => {
+                fetchDevices();
+                timer = setInterval(fetchDevices, 3000);
+            });
+
+            onUnmounted(() => {
+                if (timer) clearInterval(timer);
+            });
+
+            return {
+                devices, filteredDevices, filterText, stats,
+                lastUpdated, statusTagType, batteryStyle,
+                // Element Plus Icons
+                Search: ElementPlusIconsVue.Search,
+                Cpu: ElementPlusIconsVue.Cpu,
+                Aim: ElementPlusIconsVue.Aim,
+                SuccessFilled: ElementPlusIconsVue.SuccessFilled,
+                WarningFilled: ElementPlusIconsVue.WarningFilled,
+                Histogram: ElementPlusIconsVue.Histogram
+            };
+        }
+    });
+
+    app.use(ElementPlus, { locale: ElementPlusLocaleZhCn });
+    app.mount('#app');
+</script>
+</body>
+</html>
